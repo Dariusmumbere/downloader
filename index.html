@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Fetchbox: save audio or video from a YouTube link</title>
+<meta name="description" content="Paste a YouTube link and download the audio or video. Nothing to install, nothing stored.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #edf0f3;
+    --surface: #ffffff;
+    --ink: #0e1b2c;
+    --muted: #4a5868;
+    --line: #cbd3dd;
+    --accent: #0a6c5c;
+    --on-accent: #ffffff;
+    --accent-soft: #ddf1ec;
+    --warn-bg: #fff4d6;
+    --warn-ink: #5b3f00;
+    --warn-line: #e0b84a;
+    --err-bg: #fdecea;
+    --err-ink: #7a1a12;
+    --err-line: #e3908a;
+    --ok-bg: #ddf1ec;
+    --ok-ink: #0b4a40;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1117;
+      --surface: #131b24;
+      --ink: #e7edf3;
+      --muted: #9aa8b7;
+      --line: #2a3745;
+      --accent: #46d9b5;
+      --on-accent: #04221a;
+      --accent-soft: #12302a;
+      --warn-bg: #2b2410;
+      --warn-ink: #f2dfa6;
+      --warn-line: #5a4a18;
+      --err-bg: #2e1613;
+      --err-ink: #f6c4be;
+      --err-line: #6a2e28;
+      --ok-bg: #12302a;
+      --ok-ink: #b8f1e1;
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 1rem/1.55 var(--sans);
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: clamp(1rem, 4vw, 2.5rem); }
+
+  h1 {
+    font: 700 clamp(2.1rem, 7vw, 3.4rem)/1.04 var(--serif);
+    letter-spacing: -0.02em;
+    margin: clamp(0.5rem, 3vw, 1.5rem) 0 0.75rem;
+    text-wrap: balance;
+  }
+  .lede { margin: 0 0 1.75rem; color: var(--muted); max-width: 38rem; }
+  h2 { font: 700 1.2rem/1.3 var(--serif); margin: 0 0 0.35rem; }
+
+  label, legend { display: block; font-weight: 600; margin-bottom: 0.4rem; padding: 0; }
+  .help { margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--muted); }
+
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  /* The paste slot is the one memorable element on the page */
+  .slot {
+    display: flex;
+    background: var(--surface);
+    border: 2px solid var(--ink);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .slot:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .slot input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 1.05rem;
+    padding: 1rem 1.1rem;
+  }
+  .slot input:focus-visible { outline: none; }
+  .slot input::placeholder { color: var(--muted); opacity: 1; }
+  .slot .btn { border: 0; border-left: 2px solid var(--ink); border-radius: 0; }
+
+  .btn {
+    font: inherit;
+    font-weight: 600;
+    min-height: 2.75rem;
+    padding: 0.65rem 1.2rem;
+    color: var(--ink);
+    background: var(--surface);
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .btn:hover:not(:disabled) { background: var(--accent-soft); }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .btn-primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+
+  .status { min-height: 1.6rem; margin: 0.75rem 0 0; color: var(--muted); }
+
+  .panel {
+    margin-top: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: clamp(1rem, 3vw, 1.5rem);
+  }
+  .preview { display: grid; grid-template-columns: minmax(0, 15rem) 1fr; gap: 1.25rem; align-items: start; }
+  .preview img {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 10px;
+    background: var(--line);
+    display: block;
+  }
+  .preview p { margin: 0; color: var(--muted); }
+  .preview h2 { overflow-wrap: anywhere; }
+
+  form.options { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--line); }
+  fieldset { border: 0; margin: 0 0 1.1rem; padding: 0; min-width: 0; }
+
+  .seg { display: inline-flex; border: 2px solid var(--ink); border-radius: 10px; overflow: hidden; }
+  .seg label { margin: 0; font-weight: 600; position: relative; }
+  .seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .seg span { display: block; padding: 0.55rem 1.4rem; min-width: 6rem; text-align: center; }
+  .seg label + label span { border-left: 2px solid var(--ink); }
+  .seg input:checked + span { background: var(--ink); color: var(--bg); }
+  .seg input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: -5px; }
+  .seg input:disabled + span { opacity: 0.5; }
+  .seg input:disabled { cursor: not-allowed; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  select {
+    width: 100%;
+    font: inherit;
+    color: inherit;
+    background: var(--bg);
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    padding: 0.65rem 0.75rem;
+    min-height: 2.75rem;
+  }
+  select:disabled { opacity: 0.6; }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.25rem; }
+
+  .progress { margin-top: 1.25rem; }
+  .bar {
+    height: 0.85rem;
+    border-radius: 999px;
+    background: var(--line);
+    overflow: hidden;
+  }
+  .fill { height: 100%; width: 0; background: var(--accent); border-radius: 999px; }
+  .bar.is-indeterminate .fill {
+    width: 100%;
+    background: repeating-linear-gradient(110deg, var(--accent) 0 14px, transparent 14px 28px);
+    background-size: 56px 100%;
+    animation: slide 1.1s linear infinite;
+  }
+  @keyframes slide { to { background-position: 56px 0; } }
+  .progress-label { margin: 0.5rem 0 0; font-variant-numeric: tabular-nums; }
+
+  .notice, .alert, .done {
+    border: 1px solid;
+    border-radius: 12px;
+    padding: 0.8rem 1rem;
+    margin: 0 0 1rem;
+  }
+  .notice p, .alert p, .done p { margin: 0.2rem 0 0; }
+  .notice { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--warn-line); }
+  .alert { background: var(--err-bg); color: var(--err-ink); border-color: var(--err-line); margin-top: 1rem; }
+  .done { background: var(--ok-bg); color: var(--ok-ink); border-color: var(--accent); margin-top: 1rem; }
+  [hidden] { display: none !important; }
+
+  footer { margin-top: 2.5rem; font-size: 0.875rem; color: var(--muted); }
+  footer p { margin: 0.25rem 0; }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+
+  @media (max-width: 560px) {
+    .preview { grid-template-columns: 1fr; }
+    .row { grid-template-columns: 1fr; }
+    .slot { flex-direction: column; }
+    .slot .btn { border-left: 0; border-top: 2px solid var(--ink); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <h1>Paste a link. Get the file.</h1>
+    <p class="lede">Save the audio or video from a YouTube link. The file is prepared on the server, so there is nothing to install, and nothing is kept once your download finishes.</p>
+  </header>
+
+  <div id="notices" role="status"></div>
+
+  <form id="lookup" novalidate>
+    <label for="url">YouTube link</label>
+    <div class="slot">
+      <input id="url" name="url" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://www.youtube.com/watch?v=..." aria-describedby="url-help">
+      <button type="submit" class="btn" id="lookup-btn">Look up</button>
+    </div>
+    <p class="help" id="url-help">Works with youtube.com, music.youtube.com and youtu.be links. For playlist links, only the single video is used.</p>
+  </form>
+  <p class="status" id="lookup-status" aria-live="polite"></p>
+
+  <section class="panel" id="result" aria-labelledby="video-title" hidden>
+    <div class="preview">
+      <img id="thumb" alt="" width="320" height="180" referrerpolicy="no-referrer">
+      <div>
+        <h2 id="video-title"></h2>
+        <p id="channel"></p>
+        <p id="duration"></p>
+      </div>
+    </div>
+
+    <form class="options" id="options" novalidate>
+      <fieldset>
+        <legend>Download as</legend>
+        <div class="seg">
+          <label><input type="radio" name="mode" value="audio" checked><span>Audio</span></label>
+          <label><input type="radio" name="mode" value="video"><span>Video</span></label>
+        </div>
+      </fieldset>
+
+      <div class="row">
+        <div>
+          <label for="format">Format</label>
+          <select id="format"></select>
+        </div>
+        <div>
+          <label for="quality">Quality</label>
+          <select id="quality"></select>
+        </div>
+      </div>
+      <p class="help" id="size-hint"></p>
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary" id="download-btn">Download</button>
+        <button type="button" class="btn" id="cancel-btn" hidden>Cancel</button>
+      </div>
+
+      <div class="progress" id="progress" hidden>
+        <div class="bar" id="bar" role="progressbar" aria-labelledby="progress-label" aria-valuemin="0" aria-valuemax="100"><div class="fill" id="fill"></div></div>
+        <p class="progress-label" id="progress-label"></p>
+      </div>
+    </form>
+  </section>
+
+  <div class="done" id="done" hidden></div>
+  <div class="alert" id="error" role="alert" hidden></div>
+  <p class="sr-only" id="announce" aria-live="polite"></p>
+
+  <footer>
+    <p id="limits"></p>
+    <p>Only save content you have the right to keep. Engine: yt-dlp <span id="engine">...</span>.</p>
+  </footer>
+</main>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const el = {
+    lookupForm: $('#lookup'), url: $('#url'), lookupBtn: $('#lookup-btn'), lookupStatus: $('#lookup-status'),
+    notices: $('#notices'), result: $('#result'), thumb: $('#thumb'), title: $('#video-title'),
+    channel: $('#channel'), duration: $('#duration'), options: $('#options'), format: $('#format'),
+    quality: $('#quality'), sizeHint: $('#size-hint'), downloadBtn: $('#download-btn'), cancelBtn: $('#cancel-btn'),
+    progress: $('#progress'), bar: $('#bar'), fill: $('#fill'), progressLabel: $('#progress-label'),
+    done: $('#done'), error: $('#error'), announce: $('#announce'), limits: $('#limits'), engine: $('#engine'),
+  };
+  const radios = Array.from(document.querySelectorAll('input[name="mode"]'));
+
+  const FORMATS = {
+    audio: [
+      { v: 'mp3', label: 'MP3' },
+      { v: 'm4a', label: 'M4A (AAC)' },
+      { v: 'opus', label: 'Opus' },
+      { v: 'wav', label: 'WAV (uncompressed)' },
+    ],
+    video: [
+      { v: 'mp4', label: 'MP4 (H.264 when available)' },
+      { v: 'webm', label: 'WebM (VP9)' },
+    ],
+  };
+  const MIME = { mp3: 'audio/mpeg', m4a: 'audio/mp4', opus: 'audio/ogg', wav: 'audio/wav', mp4: 'video/mp4', webm: 'video/webm' };
+  const MP3_RATES = [128, 192, 320];
+
+  const state = { info: null, url: '', seq: 0, lookupCtl: null, dlCtl: null, busy: false, timer: null };
+
+  /* ---------- helpers ---------- */
+  function fmtBytes(n) {
+    if (!Number.isFinite(n) || n <= 0) return '0 B';
+    if (n < 1024 * 1024) return Math.max(1, Math.round(n / 1024)) + ' KB';
+    if (n < 1024 ** 3) return (n / 1024 ** 2).toFixed(n < 100 * 1024 ** 2 ? 1 : 0) + ' MB';
+    return (n / 1024 ** 3).toFixed(2) + ' GB';
+  }
+  function fmtDuration(s) {
+    if (!s) return '';
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    const pad = (x) => String(x).padStart(2, '0');
+    return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+  }
+  function looksLikeYouTube(raw) {
+    let s = raw.trim();
+    if (!/^[a-z]+:\/\//i.test(s)) s = 'https://' + s;
+    try {
+      const host = new URL(s).hostname.toLowerCase();
+      return ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'].includes(host);
+    } catch { return false; }
+  }
+  function safeName(title, ext) {
+    const base = (title || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().replace(/^\.+|\.+$/g, '').slice(0, 120).trim();
+    return `${base || 'download'}.${ext}`;
+  }
+  const mode = () => (document.querySelector('input[name="mode"]:checked') || {}).value || 'audio';
+  const announce = (t) => { el.announce.textContent = ''; setTimeout(() => { el.announce.textContent = t; }, 50); };
+
+  class ApiError extends Error {
+    constructor(message, hint, code) { super(message); this.hint = hint || ''; this.code = code || 'error'; }
+  }
+  async function toApiError(res) {
+    let data = null;
+    try { data = await res.json(); } catch { /* not JSON */ }
+    const e = data && data.error;
+    return new ApiError(
+      (e && e.message) || 'Something went wrong on the server.',
+      (e && e.hint) || 'Try again in a moment.',
+      (e && e.code) || 'error'
+    );
+  }
+
+  /* ---------- messages ---------- */
+  function showError(err) {
+    const isApi = err instanceof ApiError;
+    const message = isApi ? err.message : "Couldn't reach the server.";
+    const hint = isApi ? err.hint : 'Check your internet connection and try again.';
+    el.error.replaceChildren();
+    const strong = document.createElement('strong');
+    strong.textContent = message;
+    const p = document.createElement('p');
+    p.textContent = hint;
+    el.error.append(strong, p);
+    el.error.hidden = false;
+  }
+  function clearMessages() { el.error.hidden = true; el.error.replaceChildren(); el.done.hidden = true; el.done.replaceChildren(); }
+  function showDone(title, detail) {
+    el.done.replaceChildren();
+    const strong = document.createElement('strong');
+    strong.textContent = title;
+    const p = document.createElement('p');
+    p.textContent = detail;
+    el.done.append(strong, p);
+    el.done.hidden = false;
+  }
+  function setLookupStatus(text) { el.lookupStatus.textContent = text || ''; }
+  function addNotice(title, body) {
+    const div = document.createElement('div');
+    div.className = 'notice';
+    const s = document.createElement('strong');
+    s.textContent = title;
+    const p = document.createElement('p');
+    p.textContent = body;
+    div.append(s, p);
+    el.notices.append(div);
+  }
+
+  /* ---------- lookup ---------- */
+  function hideResult() { el.result.hidden = true; state.info = null; state.url = ''; hideProgress(); }
+
+  async function lookup(raw) {
+    const seq = ++state.seq;
+    if (state.lookupCtl) state.lookupCtl.abort();
+    const ctl = new AbortController();
+    state.lookupCtl = ctl;
+    clearMessages();
+    hideResult();
+    setLookupStatus('Looking up the video...');
+    try {
+      const res = await fetch('/api/info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: raw }),
+        signal: ctl.signal,
+      });
+      if (!res.ok) throw await toApiError(res);
+      const data = await res.json();
+      if (seq !== state.seq) return;
+      state.info = data;
+      state.url = raw;
+      setLookupStatus('');
+      showResult(data);
+    } catch (e) {
+      if (e.name === 'AbortError' || seq !== state.seq) return;
+      setLookupStatus('');
+      showError(e);
+    }
+  }
+
+  function showResult(info) {
+    el.thumb.src = info.thumbnail;
+    el.title.textContent = info.title;
+    el.channel.textContent = info.uploader ? `Channel: ${info.uploader}` : '';
+    el.duration.textContent = info.duration ? `Length: ${fmtDuration(info.duration)}` : '';
+    const hasVideo = (info.heights || []).length > 0;
+    radios.forEach((r) => { if (r.value === 'video') r.disabled = !hasVideo; });
+    radios[0].checked = true;
+    renderFormats();
+    el.result.hidden = false;
+  }
+
+  /* ---------- options ---------- */
+  function renderFormats() {
+    const m = mode();
+    el.format.replaceChildren(...FORMATS[m].map((f) => new Option(f.label, f.v)));
+    renderQuality();
+  }
+
+  function estimate(m, fmt, q) {
+    const info = state.info;
+    if (!info) return null;
+    if (m === 'audio') {
+      if (fmt === 'mp3' && info.duration) return (Number(q) * 1000 / 8) * info.duration;
+      if (fmt === 'wav' && info.duration) return 176400 * info.duration;
+      return info.audio_bytes || null;
+    }
+    return (info.sizes && info.sizes[q]) || null;
+  }
+  const about = (n) => (n ? ` (about ${fmtBytes(n)})` : '');
+
+  function renderQuality() {
+    const m = mode(), fmt = el.format.value, info = state.info;
+    if (m === 'audio' && fmt === 'mp3') {
+      el.quality.replaceChildren(...MP3_RATES.map((r) => new Option(`${r} kbps${about(estimate(m, fmt, r))}`, String(r))));
+      el.quality.value = '192';
+      el.quality.disabled = false;
+    } else if (m === 'audio') {
+      el.quality.replaceChildren(new Option('Best available', 'best'));
+      el.quality.disabled = true;
+    } else {
+      const heights = info.heights;
+      el.quality.replaceChildren(...heights.map((h) => new Option(`${h}p${about(estimate(m, fmt, String(h)))}`, String(h))));
+      // Default to 1080p or the highest below it: a sensible size for most uses.
+      el.quality.value = String(heights.find((h) => h <= 1080) || heights[0]);
+      el.quality.disabled = false;
+    }
+    renderHint();
+  }
+
+  function renderHint() {
+    const m = mode(), fmt = el.format.value, q = el.quality.value, parts = [];
+    const size = estimate(m, fmt, q);
+    if (size) parts.push(`Estimated size: about ${fmtBytes(size)}.`);
+    if (fmt === 'wav') parts.push('WAV is uncompressed, so files are large.');
+    if (m === 'video' && fmt === 'mp4' && Number(q) > 1080) {
+      parts.push('YouTube only offers H.264 up to 1080p. Above that, the MP4 uses a newer codec that some older players cannot open.');
+    }
+    el.sizeHint.textContent = parts.join(' ');
+  }
+
+  /* ---------- progress ---------- */
+  function hideProgress() {
+    el.progress.hidden = true;
+    el.bar.classList.remove('is-indeterminate');
+    el.fill.style.width = '0';
+    el.bar.removeAttribute('aria-valuenow');
+    el.bar.removeAttribute('aria-valuetext');
+  }
+  function showIndeterminate(label) {
+    el.progress.hidden = false;
+    el.bar.classList.add('is-indeterminate');
+    el.bar.removeAttribute('aria-valuenow');
+    el.bar.setAttribute('aria-valuetext', label);
+    el.progressLabel.textContent = label;
+  }
+  function showDeterminate(received, total) {
+    el.progress.hidden = false;
+    el.bar.classList.remove('is-indeterminate');
+    if (total > 0) {
+      const pct = Math.min(100, Math.floor((received / total) * 100));
+      el.fill.style.width = pct + '%';
+      el.bar.setAttribute('aria-valuenow', String(pct));
+      const text = `Downloading: ${fmtBytes(received)} of ${fmtBytes(total)} (${pct}%)`;
+      el.bar.setAttribute('aria-valuetext', text);
+      el.progressLabel.textContent = text;
+    } else {
+      el.bar.classList.add('is-indeterminate');
+      el.progressLabel.textContent = `Downloading: ${fmtBytes(received)} so far`;
+    }
+  }
+  function setBusy(b) {
+    state.busy = b;
+    el.downloadBtn.disabled = b;
+    el.cancelBtn.hidden = !b;
+    el.format.disabled = b;
+    radios.forEach((r) => { r.disabled = b || (r.value === 'video' && !(state.info && state.info.heights.length)); });
+    el.quality.disabled = b || (mode() === 'audio' && el.format.value !== 'mp3');
+  }
+
+  /* ---------- download ---------- */
+  function saveBlob(blob, name) {
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href; a.download = name; a.hidden = true;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 30000);
+  }
+
+  async function startDownload() {
+    if (state.busy || !state.info) return;
+    clearMessages();
+    const m = mode(), fmt = el.format.value, q = el.quality.value;
+    const name = safeName(state.info.title, fmt);
+    const params = new URLSearchParams({ url: state.url, format: fmt, quality: q });
+
+    // Where supported, stream straight to a file the user picks (no memory limit).
+    let writable = null;
+    if (typeof window.showSaveFilePicker === 'function') {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: name,
+          types: [{ description: `${fmt.toUpperCase()} file`, accept: { [MIME[fmt]]: ['.' + fmt] } }],
+        });
+        writable = await handle.createWritable();
+      } catch (e) {
+        if (e && e.name === 'AbortError') return; // person closed the save dialog
+        writable = null; // fall back to an in-memory download
+      }
+    }
+
+    const ctl = new AbortController();
+    state.dlCtl = ctl;
+    setBusy(true);
+    const t0 = Date.now();
+    let streaming = false;
+    showIndeterminate('Preparing your file...');
+    announce('Preparing your file. This can take a minute.');
+    state.timer = setInterval(() => {
+      if (!streaming) showIndeterminate(`Preparing your file... ${Math.floor((Date.now() - t0) / 1000)} s`);
+    }, 1000);
+
+    try {
+      const res = await fetch('/api/download?' + params.toString(), { signal: ctl.signal });
+      if (!res.ok) throw await toApiError(res);
+      streaming = true;
+      announce('Your file is ready. Downloading now.');
+      const total = Number(res.headers.get('Content-Length')) || 0;
+      let received = 0;
+
+      if (res.body && res.body.getReader) {
+        const reader = res.body.getReader();
+        const chunks = [];
+        let lastPaint = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          received += value.length;
+          if (writable) await writable.write(value); else chunks.push(value);
+          const now = performance.now();
+          if (now - lastPaint > 120) { showDeterminate(received, total); lastPaint = now; }
+        }
+        showDeterminate(received, total || received);
+        if (writable) { const w = writable; writable = null; await w.close(); }
+        else saveBlob(new Blob(chunks, { type: MIME[fmt] }), name);
+      } else {
+        const blob = await res.blob();
+        showDeterminate(blob.size, blob.size);
+        saveBlob(blob, name);
+      }
+
+      showDone('Done.', writable === null && typeof window.showSaveFilePicker === 'function'
+        ? `Your file was saved as "${name}".`
+        : `Your browser should now save "${name}". Check your Downloads folder.`);
+      announce('Download complete.');
+    } catch (e) {
+      if (writable) { try { await writable.abort(); } catch { /* ignore */ } }
+      hideProgress();
+      if (e && e.name === 'AbortError') {
+        setLookupStatus('');
+        announce('Download cancelled.');
+      } else if (streaming) {
+        showError(new ApiError('The download was interrupted.', 'Your connection may have dropped. Try again.', 'interrupted'));
+      } else {
+        showError(e);
+      }
+    } finally {
+      clearInterval(state.timer);
+      state.dlCtl = null;
+      setBusy(false);
+    }
+  }
+
+  /* ---------- wiring ---------- */
+  let debounce = null;
+  function onInput() {
+    clearTimeout(debounce);
+    const raw = el.url.value.trim();
+    if (!raw) { state.seq++; clearMessages(); hideResult(); setLookupStatus(''); return; }
+    debounce = setTimeout(() => {
+      if (!looksLikeYouTube(raw)) {
+        setLookupStatus("That doesn't look like a YouTube link yet. Use youtube.com, music.youtube.com or youtu.be.");
+        return;
+      }
+      if (raw === state.url && state.info) return;
+      lookup(raw);
+    }, 600);
+  }
+
+  el.url.addEventListener('input', onInput);
+  el.lookupForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    clearTimeout(debounce);
+    const raw = el.url.value.trim();
+    if (!raw) { setLookupStatus('Paste a YouTube link first.'); return; }
+    if (!looksLikeYouTube(raw)) { setLookupStatus("That doesn't look like a YouTube link. Use youtube.com, music.youtube.com or youtu.be."); return; }
+    lookup(raw);
+  });
+  radios.forEach((r) => r.addEventListener('change', () => { el.done.hidden = true; hideProgress(); renderFormats(); }));
+  el.format.addEventListener('change', () => { el.done.hidden = true; renderQuality(); });
+  el.quality.addEventListener('change', () => { el.done.hidden = true; renderHint(); });
+  el.options.addEventListener('submit', (e) => { e.preventDefault(); startDownload(); });
+  el.cancelBtn.addEventListener('click', () => { if (state.dlCtl) state.dlCtl.abort(); });
+
+  /* ---------- server self-check ---------- */
+  fetch('/api/health').then((r) => r.json()).then((h) => {
+    el.engine.textContent = h.yt_dlp || 'unknown';
+    if (!h.proxy) {
+      addNotice('No residential proxy is set up on this server.',
+        'YouTube blocks most hosting providers, so downloads will usually fail here. If you run this site, set the YTDLP_PROXY environment variable (see the README) and redeploy.');
+    }
+    if (h.ffmpeg === false) {
+      addNotice('FFmpeg is missing on this server.', 'Audio conversion and video merging will not work until the site owner installs it.');
+    }
+    if (h.limits) {
+      el.limits.textContent = `Videos up to ${h.limits.max_duration_min} minutes. Up to ${h.limits.downloads_per_window} downloads every ${h.limits.window_min} minutes per visitor.`;
+    }
+  }).catch(() => { el.engine.textContent = 'unavailable'; });
+
+  if (window.matchMedia && matchMedia('(pointer: fine)').matches) el.url.focus();
+})();
+</script>
+</body>
+</html>
