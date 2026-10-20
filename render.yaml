@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: fetchbox
+    runtime: docker
+    plan: starter            # free plans sleep when idle and are slow to wake
+    healthCheckPath: /api/health
+    envVars:
+      - key: YTDLP_PROXY      # e.g. http://user:pass@host:port (set in the dashboard)
+        sync: false
+      - key: MAX_DURATION_MIN
+        value: "60"
+      - key: RATE_LIMIT_DOWNLOADS
+        value: "5"
+      - key: RATE_LIMIT_WINDOW_MIN
+        value: "10"
+      - key: GLOBAL_DOWNLOADS_PER_HOUR
+        value: "100"
+# Optional cookies: add a Secret File named cookies.txt in the Render dashboard
+# (Environment > Secret Files). Secret files can't be declared in this file.
