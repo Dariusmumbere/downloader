@@ -835,7 +835,7 @@ app.add_middleware(SecurityHeaders)
 # Needed when the page is hosted on a different origin than this backend.
 # The Vercel frontend is allowed by default; ALLOWED_ORIGINS adds more
 # (comma-separated), e.g. a custom domain.
-_DEFAULT_ORIGINS = ["https://download-seven-alpha.vercel.app"]
+_DEFAULT_ORIGINS = ["https://dariusmumbere.github.io/downloader"]
 _ALLOWED_ORIGINS = _DEFAULT_ORIGINS + [
     o.strip().rstrip("/") for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()
 ]
