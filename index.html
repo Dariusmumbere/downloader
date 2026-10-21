@@ -360,7 +360,7 @@
   function showError(err) {
     const isApi = err instanceof ApiError;
     const message = isApi ? err.message : "Couldn't reach the server.";
-    const hint = isApi ? err.hint : 'Check your internet connection and try again.';
+    const hint = isApi ? err.hint : 'The server may be waking up or temporarily unavailable. Wait a few seconds and try again.';
     el.error.replaceChildren();
     const strong = document.createElement('strong');
     strong.textContent = message;
@@ -402,6 +402,11 @@
     clearMessages();
     hideResult();
     setLookupStatus('Looking up the video...');
+    let timedOut = false;
+    const slowTimer = setTimeout(() => {
+      if (seq === state.seq) setLookupStatus('Still working. If the server was asleep, this can take up to a minute.');
+    }, 6000);
+    const killTimer = setTimeout(() => { timedOut = true; ctl.abort(); }, 90000);
     try {
       const res = await fetch(API_BASE + '/api/info', {
         method: 'POST',
@@ -417,9 +422,15 @@
       setLookupStatus('');
       showResult(data);
     } catch (e) {
-      if (e.name === 'AbortError' || seq !== state.seq) return;
+      if (seq !== state.seq) return;
+      if (e.name === 'AbortError' && !timedOut) return;
       setLookupStatus('');
-      showError(e);
+      showError(timedOut
+        ? new ApiError('The server took too long to respond.', 'It may be waking up. Wait a moment and try again.', 'timeout')
+        : e);
+    } finally {
+      clearTimeout(slowTimer);
+      clearTimeout(killTimer);
     }
   }
 
