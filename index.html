@@ -284,6 +284,8 @@
 <script>
 (() => {
   'use strict';
+  // Backend base URL. The page also works when served by the backend itself.
+  const API_BASE = 'https://downloader-j91r.onrender.com';
   const $ = (s) => document.querySelector(s);
   const el = {
     lookupForm: $('#lookup'), url: $('#url'), lookupBtn: $('#lookup-btn'), lookupStatus: $('#lookup-status'),
@@ -401,7 +403,7 @@
     hideResult();
     setLookupStatus('Looking up the video...');
     try {
-      const res = await fetch('/api/info', {
+      const res = await fetch(API_BASE + '/api/info', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: raw }),
@@ -564,7 +566,7 @@
     }, 1000);
 
     try {
-      const res = await fetch('/api/download?' + params.toString(), { signal: ctl.signal });
+      const res = await fetch(API_BASE + '/api/download?' + params.toString(), { signal: ctl.signal });
       if (!res.ok) throw await toApiError(res);
       streaming = true;
       announce('Your file is ready. Downloading now.');
@@ -646,7 +648,7 @@
   el.cancelBtn.addEventListener('click', () => { if (state.dlCtl) state.dlCtl.abort(); });
 
   /* ---------- server self-check ---------- */
-  fetch('/api/health').then((r) => r.json()).then((h) => {
+  fetch(API_BASE + '/api/health').then((r) => r.json()).then((h) => {
     el.engine.textContent = h.yt_dlp || 'unknown';
     if (!h.proxy) {
       addNotice('No residential proxy is set up on this server.',
