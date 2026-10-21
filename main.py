@@ -32,6 +32,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 from starlette.datastructures import MutableHeaders
+from starlette.middleware.cors import CORSMiddleware
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadCancelled
 from yt_dlp.version import __version__ as YTDLP_VERSION
@@ -830,6 +831,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.add_middleware(SecurityHeaders)
+
+# Needed when the page is hosted on a different origin than this backend.
+# The Vercel frontend is allowed by default; ALLOWED_ORIGINS adds more
+# (comma-separated), e.g. a custom domain.
+_DEFAULT_ORIGINS = ["https://download-seven-alpha.vercel.app"]
+_ALLOWED_ORIGINS = _DEFAULT_ORIGINS + [
+    o.strip().rstrip("/") for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()
+]
+if _ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_ALLOWED_ORIGINS,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
+        expose_headers=["Content-Length", "Content-Disposition", "Retry-After"],
+    )
 
 
 def _error_response(exc: AppError) -> JSONResponse:
